@@ -7,7 +7,7 @@
 # You can find him on github at
 # https://github.com/tknorris/
 #
-###########################
+##########################
 
 import requests
 import os
@@ -17,6 +17,11 @@ import shutil
 import sys
 import argparse
 import configparser
+import colorama
+from colorama import Back, Fore
+import threading
+
+colorama.init()
 
 prog_description = ("Generates kodi-compatible strm files from torrents on " +
                     "premiumize. Parameters are required for first run to " +
@@ -51,8 +56,8 @@ def get_torrents(content):
                 ondisk_hashes = []
                 curTorrent = {'name': item['name'], 'hash': item['hash']}
                 torrents.append(curTorrent)
-                print("Torrent: " + item['name'])
-                print("Hash: " + item['hash'])
+                print(Back.GREEN + "Torrent: " + item['name'])
+                print(Back.GREEN + "Hash: " + item['hash'] + Back.BLACK)
                 # Load hash db from disk
                 if os.path.exists(hash_db):
                     with open(hash_db, 'r') as file:
@@ -63,7 +68,8 @@ def get_torrents(content):
                     if (od_hash['hash'] == curTorrent['hash'] and
                             os.path.exists(os.path.join(base_dir,
                                                         od_hash['name']))):
-                        print("Skipping, already on disk")
+                        print(Fore.GREEN + "Skipping, already on disk" +
+                              Fore.WHITE)
                         break
                 else:
                     while True:
@@ -73,7 +79,7 @@ def get_torrents(content):
                             browse_torrent(item['hash'])
                             break
                         elif import_torrent.upper() == 'N':
-                            print("Skipping...")
+                            print(Fore.GREEN + "Skipping..." + Fore.WHITE)
                             break
     cleanup(torrents, imported_torrents)
 
@@ -194,12 +200,14 @@ def cleanup(torrents, imported_torrents):
         for torrent in torrents:
             if (od_hash['hash'] == torrent['hash'] and
                     os.path.exists(os.path.join(base_dir, od_hash['name']))):
-                print("Keeping " + od_hash['name'] + " on disk")
+                print(Fore.GREEN + "Keeping " + od_hash['name'] + " on disk" +
+                      Fore.BLACK)
                 cleaned_hashes.append(od_hash)
                 break
         else:
             if os.path.exists(os.path.join(base_dir, od_hash['name'])):
-                print("Deleting " + od_hash['name'] + " from disk")
+                print(Fore.RED + "Deleting " + od_hash['name'] + " from disk" +
+                      Fore.BLACK)
                 shutil.rmtree(os.path.join(base_dir, od_hash['name']))
     ondisk_hashes = cleaned_hashes
 
