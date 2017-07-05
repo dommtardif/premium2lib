@@ -10,6 +10,8 @@ customer_id = '797850487' #premiumize customer id
 pin = '3rhaut52ssckmq7r' #premiumize pin
 base_dir = '/home/dom/test/' #base directory for strm file output
 hash_db = base_dir + 'hash.db' #on disk torrent hash db
+root_list = (requests.get('https://www.premiumize.me/api/folder/list',params={'customer_id':customer_id,'pin':pin})).json()
+
 
 #Define video and subs extensions
 VIDEO_EXTS = ['M4V' , '3G2' , '3GP' , 'NSV' , 'TP' , 'TS' , 'TY' , 'PLS' , 'RM' , 'RMVB' , 'MPD' , 'M3U' , 'M3U8' , 'IFO' , 'MOV' , 'QT' , 'DIVX' , 'XVID' , 'BIVX' , 'VOB' , 'NRG' , 'PVA' , 'WMV' , 'ASF' , 'ASX' , 'OGM' , 'M2V' , 'AVI' , 'DAT' , 'MPG' , 'MPEG' , 'MP4' , 'MKV' , 'MK3D' , 'AVC' , 'VP3' , 'SVQ3' , 'NUV' , 'VIV' , 'DV' , 'FLI' , 'FLV' , '001' , 'WPL' , 'VDR' , 'DVR-MS' , 'XSP' , 'MTS' , 'M2T' , 'M2TS' , 'EVO' , 'OGV' , 'SDP' , 'AVS' , 'REC' , 'URL' , 'PXML' , 'VC1' , 'H264' , 'RCV' , 'RSS' , 'MPLS' , 'WEBM' , 'BDMV' , 'WTV']
@@ -170,10 +172,13 @@ def cleanup(torrents,imported_torrents):
     with open(hash_db, "w") as file:
         file.write(str(ondisk_hashes))
 
+def main():    
+    try:
+        get_torrents(root_list['content'])
+    except KeyboardInterrupt:
+        print("Exiting...")
+        sys.exit()
 
-try:
-    root_list = (requests.get('https://www.premiumize.me/api/folder/list',params={'customer_id':customer_id,'pin':pin})).json()
-    get_torrents(root_list['content'])
-except KeyboardInterrupt:
-    print("Exiting...")
-    sys.exit()
+if __name__ == "__main__":
+    main()
+
