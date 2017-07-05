@@ -61,7 +61,8 @@ def get_torrents(content):
                 # check for unique hash before import
                 for od_hash in ondisk_hashes:
                     if (od_hash['hash'] == curTorrent['hash'] and
-                            os.path.exists(base_dir + od_hash['name'])):
+                            os.path.exists(os.path.join(base_dir,
+                                                        od_hash['name']))):
                         print("Skipping, already on disk")
                         break
                 else:
@@ -104,7 +105,10 @@ def get_videos(content):
             # if item is video, add to list
             if 'ext' in item and item['ext'].upper() in VIDEO_EXTS:
                 print("Found video: " + item['name'])
-                path = os.path.splitext(base_dir + item['path'])[0]+'.strm'
+                path = os.path.join(base_dir,
+                                    os.path.splitext(item['path'])[0]+'.strm')
+                #path = os.path.splitext(os.path.join(base_dir,
+                #                        item['path']))[0]+'.strm'
                 video = {'path': path, 'name': item['name'],
                          'url': item['url']}
                 videos.append(video)
@@ -122,7 +126,7 @@ def get_subs(content):
             # if item is subtitle, download
             if 'ext' in item and item['ext'].upper() in SUBS_EXTS:
                 print("Found subtitle: " + item['name'])
-                path = base_dir + item['path']
+                path = os.path.join(base_dir, item['path'])
                 sub = {'path': path, 'name': item['name'], 'url': item['url']}
                 download_sub(sub)
 
@@ -191,14 +195,14 @@ def cleanup(torrents, imported_torrents):
     for od_hash in ondisk_hashes:
         for torrent in torrents:
             if (od_hash['hash'] == torrent['hash'] and
-                    os.path.exists(base_dir + od_hash['name'])):
+                    os.path.exists(os.path.join(base_dir, od_hash['name']))):
                 print("Keeping " + od_hash['name'] + " on disk")
                 cleaned_hashes.append(od_hash)
                 break
         else:
-            if os.path.exists(base_dir + od_hash['name']):
+            if os.path.exists(os.path.join(base_dir, od_hash['name'])):
                 print("Deleting " + od_hash['name'] + " from disk")
-                shutil.rmtree(base_dir + od_hash['name'])
+                shutil.rmtree(os.path.join(base_dir, od_hash['name']))
     ondisk_hashes = cleaned_hashes
 
     # create directory if not exists
