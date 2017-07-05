@@ -132,7 +132,9 @@ def get_subs(content):
                 print("Found subtitle: " + item['name'])
                 path = os.path.join(base_dir, item['path'])
                 sub = {'path': path, 'name': item['name'], 'url': item['url']}
-                download_sub(sub)
+                t = threading.Thread(target=download_sub, args=((sub),))
+                t.daemon = True
+                t.start()
 
 # Generate strm file
 
@@ -162,18 +164,18 @@ def download_sub(sub):
     if not os.path.exists(os.path.dirname(sub['path'])):
         try:
             os.makedirs(os.path.dirname(sub['path']))
-            print("Created path: " + os.path.dirname(sub['path']))
+            # print("Created path: " + os.path.dirname(sub['path']))
         except OSError as exc:  # Guard against race condition
             if exc.errno != errno.EEXIST:
                 raise
     # create sub file if not exists
     if not os.path.exists(sub['path']):
-        print("Creating file: " + sub['path'])
+        # print("Creating file: " + sub['path'])
         with open(sub['path'], "wb") as file:
             sub_file = requests.get(sub['url'])
             file.write(sub_file.content)
-    else:
-        print("Skipping file " + sub['path'] + " already exists")
+    # else:
+        # print("Skipping file " + sub['path'] + " already exists")
 
 # Check if files on disk are still available on premiumize
 # Delete if remotely deleted
