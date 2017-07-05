@@ -32,11 +32,11 @@ def get_torrents(content):
                         raw = file.read()
                         ondisk_hashes = ast.literal_eval(raw)
                 #check for unique hash before import
-                seen = False
                 for od_hash in ondisk_hashes:
                     if od_hash['hash'] == curTorrent['hash']:
-                        seen = True
-                if not seen:
+                        print("Skipping, already on disk")
+                        break
+                else:
                     while True:
                         import_torrent = input("Import torrent? (y/n)")
                         if import_torrent.upper() == 'Y':
@@ -46,8 +46,6 @@ def get_torrents(content):
                         elif import_torrent.upper() == 'N':
                             print("Skipping...")
                             break
-                else:
-                    print("Skipping, already on disk")
     cleanup(torrents,imported_torrents)
     
                 
@@ -142,26 +140,22 @@ def cleanup(torrents,imported_torrents):
             ondisk_hashes = ast.literal_eval(raw)
     #check for unique hash before import
     for im_torrent in imported_torrents:
-        seen = False
         for od_hash in ondisk_hashes:
             if od_hash['hash'] == im_torrent['hash']:
-                seen = True
-        if not seen:
+                break
+        else:
             ondisk_hashes.append(im_torrent)
     #compare ondisk_hashes with torrents hashes
     cleaned_hashes = []
     for od_hash in ondisk_hashes:
-        seen = False
         for torrent in torrents:
             if od_hash['hash'] == torrent['hash']:
-                seen = True
-        if not seen:
+                print ("Keeping " + od_hash['name'] + " on disk")
+                cleaned_hashes.append(od_hash)
+                break
+        else:
             print ("Deleting " + od_hash['name'] + " from disk")
-            shutil.rmtree(base_dir + od_hash['name'])
-            
-        elif seen:
-            print ("Keeping " + od_hash['name'] + " on disk")
-            cleaned_hashes.append(od_hash)
+            shutil.rmtree(base_dir + od_hash['name'])      
     ondisk_hashes = cleaned_hashes
     
     #create directory if not exists
