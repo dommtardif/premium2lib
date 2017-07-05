@@ -1,4 +1,14 @@
 #!/usr/bin/python3
+###########################
+#
+# This was originally heavily inspired by tknorris' premiumize kodi addon.
+# Although this project has pretty much nothing to do with his original
+# code anymore, I still wish to recognize his work.
+# You can find him on github at
+# https://github.com/tknorris/
+#
+###########################
+
 import requests
 import os
 import errno
