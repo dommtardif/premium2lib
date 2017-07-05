@@ -107,8 +107,6 @@ def get_videos(content):
                 print("Found video: " + item['name'])
                 path = os.path.join(base_dir,
                                     os.path.splitext(item['path'])[0]+'.strm')
-                #path = os.path.splitext(os.path.join(base_dir,
-                #                        item['path']))[0]+'.strm'
                 video = {'path': path, 'name': item['name'],
                          'url': item['url']}
                 videos.append(video)
