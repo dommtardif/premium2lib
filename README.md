@@ -2,7 +2,7 @@
 From premiumize files to kodi compatible strm files
 
 ## Usage
-```bash
+```
 usage: premium2lib.py [-h] [-u ID] [-p PIN] [-o PATH]
 
 Generates kodi-compatible strm files from torrents on premiumize. Parameters
