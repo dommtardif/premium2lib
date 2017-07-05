@@ -220,7 +220,7 @@ def main():
 
     if not os.path.exists(config_file):
         parser.add_argument('-u', '--user', metavar="ID", required=True,
-                            help="Premiumize cuspytomer id")
+                            help="Premiumize customer id")
         parser.add_argument('-p', '--pin', required=True,
                             help="Premiumize PIN")
         parser.add_argument('-o', '--outdir', required=True, metavar="PATH",
