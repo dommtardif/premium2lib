@@ -60,7 +60,8 @@ def get_torrents(content):
                         ondisk_hashes = ast.literal_eval(raw)
                 # check for unique hash before import
                 for od_hash in ondisk_hashes:
-                    if od_hash['hash'] == curTorrent['hash']:
+                    if (od_hash['hash'] == curTorrent['hash'] and
+                            os.path.exists(base_dir + od_hash['name'])):
                         print("Skipping, already on disk")
                         break
                 else:
@@ -189,13 +190,15 @@ def cleanup(torrents, imported_torrents):
     cleaned_hashes = []
     for od_hash in ondisk_hashes:
         for torrent in torrents:
-            if od_hash['hash'] == torrent['hash']:
+            if (od_hash['hash'] == torrent['hash'] and
+                    os.path.exists(base_dir + od_hash['name'])):
                 print("Keeping " + od_hash['name'] + " on disk")
                 cleaned_hashes.append(od_hash)
                 break
         else:
-            print("Deleting " + od_hash['name'] + " from disk")
-            shutil.rmtree(base_dir + od_hash['name'])
+            if os.path.exists(base_dir + od_hash['name']):
+                print("Deleting " + od_hash['name'] + " from disk")
+                shutil.rmtree(base_dir + od_hash['name'])
     ondisk_hashes = cleaned_hashes
 
     # create directory if not exists
