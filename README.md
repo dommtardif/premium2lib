@@ -14,18 +14,27 @@ The script will output .strm files that are compatible with Kodi into the specif
 
 ## Usage
 ```
-usage: premium2lib.py [-h] [-u ID] [-p PIN] [-o PATH]
+usage: premium2lib.py [-h] [-u ID] [-p PIN] [-o PATH] [-a] [-d | -v]
+                      [--version]
 
 Generates kodi-compatible strm files from torrents on premiumize. Parameters
 are required for first run to generate config file
 
 optional arguments:
+
   -h, --help            show this help message and exit
   -u ID, --user ID      Premiumize customer id
   -p PIN, --pin PIN     Premiumize PIN
   -o PATH, --outdir PATH
-
                         Output directory for generated files
+  -a, --all             Import all videos from premiumize at once
+  --version             show program's version number and exit
+
+Debug:
+  Debug related options
+
+  -d, --debug           Show debug output
+  -v, --verbose         Show verbose output
 ```
 
 ## Thanks
