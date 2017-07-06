@@ -18,14 +18,16 @@ import sys
 import argparse
 import configparser
 import colorama
-from colorama import Back, Fore
+from colorama import Back
 import threading
 import logging
+__version__ = '0.17'
+
 
 colorama.init()
 
-prog_description = ("Generates kodi-compatible strm files from torrents on " +
-                    "premiumize. Parameters are required for first run to " +
+prog_description = ("Generates kodi-compatible strm files from torrents on "
+                    "premiumize. Parameters are required for first run to "
                     "generate config file")
 
 # on disk torrent hash db
@@ -80,14 +82,14 @@ def get_torrents(content, all_at_once):
                         else:
                             import_torrent = input("Import torrent? (y/n)")
                         if import_torrent.upper() == 'Y':
-                            logger.info("Importing " + item['name'] +
-                                        " hash: " + item['hash'])
+                            logger.debug("Importing " + item['name'] +
+                                         " hash: " + item['hash'])
                             imported_torrents.append(curTorrent)
                             browse_torrent(item['hash'])
                             break
                         elif import_torrent.upper() == 'N':
-                            logger.info("Skipping " + item['name'] +
-                                        " hash: " + item['hash'])
+                            logger.debug("Skipping " + item['name'] +
+                                         " hash: " + item['hash'])
                             break
     cleanup(torrents, imported_torrents)
 
@@ -139,7 +141,6 @@ def get_subs(content):
                 path = os.path.join(base_dir, item['path'])
                 sub = {'path': path, 'name': item['name'], 'url': item['url']}
                 t = threading.Thread(target=download_sub, args=((sub),))
-                # t.daemon = True
                 t.start()
 
 # Generate strm file
@@ -191,7 +192,7 @@ def download_sub(sub):
 
 def cleanup(torrents, imported_torrents):
     logger = logging.getLogger("cleanup")
-    logger.debug("Cleanup...")
+    logger.info("Cleanup...")
     ondisk_hashes = []
     # Load hash db from disk
     if os.path.exists(hash_db):
@@ -211,7 +212,7 @@ def cleanup(torrents, imported_torrents):
         for torrent in torrents:
             if (od_hash['hash'] == torrent['hash'] and
                     os.path.exists(os.path.join(base_dir, od_hash['name']))):
-                logger.debug("Keeping " + od_hash['name'] + " on disk")
+                logger.info("Keeping " + od_hash['name'] + " on disk")
                 cleaned_hashes.append(od_hash)
                 break
         else:
@@ -219,6 +220,8 @@ def cleanup(torrents, imported_torrents):
                 logger.warning("Deleting " + od_hash['name'] + " from disk" +
                                " because it was deleted on premiumize")
                 shutil.rmtree(os.path.join(base_dir, od_hash['name']))
+                logger.debug("Deleted " +
+                             os.path.join(base_dir, od_hash['name']))
     ondisk_hashes = cleaned_hashes
 
     # create directory if not exists
@@ -236,11 +239,12 @@ def cleanup(torrents, imported_torrents):
 
 def main():
     global base_dir, customer_id, pin
-    logger = logging.getLogger("main")
+
     parser = argparse.ArgumentParser(description=prog_description)
     config = configparser.ConfigParser()
     config['MAIN'] = {}
 
+    # if config not exists, make args required
     if not os.path.exists(config_file):
         parser.add_argument('-u', '--user', metavar="ID", required=True,
                             help="Premiumize customer id")
@@ -248,7 +252,8 @@ def main():
                             help="Premiumize PIN")
         parser.add_argument('-o', '--outdir', required=True, metavar="PATH",
                             help="Output directory for generated files")
-    else:  # Config file exists, load its values first, override with params
+    # Config file exists, load its values first, override with args
+    else:
         config.read(config_file)
         customer_id = config['MAIN']['customer_id']
         pin = config['MAIN']['pin']
@@ -259,6 +264,7 @@ def main():
         parser.add_argument('-p', '--pin', help="Premiumize PIN")
         parser.add_argument('-o', '--outdir', metavar="PATH",
                             help="Output directory for generated files")
+
     parser.add_argument('-a', '--all', action='store_true',
                         help="Import all videos from premiumize at once")
     debug_group = parser.add_argument_group("Debug", "Debug related options")
@@ -267,13 +273,14 @@ def main():
                                help="Show debug output")
     debug_options.add_argument('-v', '--verbose', action='store_true',
                                help="Show verbose output")
+    parser.add_argument('--version', action='version',
+                        version='%(prog)s {version}'
+                        .format(version=__version__))
+
     args = parser.parse_args()
-    logger.debug("Arguments from command line: " + str(sys.argv[1:]))
     if args.debug:
-        # logger.setLevel(logging.DEBUG)
         logging.basicConfig(level=logging.DEBUG)
     elif args.verbose:
-        # logger.setLevel(logging.INFO)
         logging.basicConfig(level=logging.INFO)
     else:
         logging.basicConfig(level=logging.WARNING)
@@ -287,14 +294,17 @@ def main():
         base_dir = os.path.join(args.outdir, '')
         config['MAIN']['base_dir'] = os.path.join(args.outdir, '')
 
+    logger = logging.getLogger("main")
+    logger.debug("Arguments from command line: " + str(sys.argv))
+
     with open(config_file, 'w') as configfile:
         config.write(configfile)
-
-    root_list = (requests.get('https://www.premiumize.me/api/folder/list',
-                 params={'customer_id': customer_id, 'pin': pin})).json()
+        logger.debug("Saved config to file: " + config_file)
 
     # Start actual creation process
     try:
+        root_list = (requests.get('https://www.premiumize.me/api/folder/list',
+                     params={'customer_id': customer_id, 'pin': pin})).json()
         get_torrents(root_list['content'], args.all)
     except KeyboardInterrupt:
         print("Exiting...")
