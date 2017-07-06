@@ -22,9 +22,6 @@ from colorama import Back, Fore
 import threading
 import logging
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.CRITICAL)
-
 colorama.init()
 
 prog_description = ("Generates kodi-compatible strm files from torrents on " +
@@ -53,6 +50,7 @@ SUBS_EXTS = ['SRT']
 
 
 def get_torrents(content, all_at_once):
+    logger = logging.getLogger("get_torrents")
     torrents = []
     imported_torrents = []
     for item in content:
@@ -60,8 +58,9 @@ def get_torrents(content, all_at_once):
                 ondisk_hashes = []
                 curTorrent = {'name': item['name'], 'hash': item['hash']}
                 torrents.append(curTorrent)
-                print(Back.GREEN + "Torrent: " + item['name'])
-                print(Back.GREEN + "Hash: " + item['hash'] + Back.BLACK)
+                print(Back.GREEN + "Found torrent" + Back.BLACK)
+                print("Torrent: " + item['name'])
+                print("Hash: " + item['hash'])
                 # Load hash db from disk
                 if os.path.exists(hash_db):
                     with open(hash_db, 'r') as file:
@@ -81,14 +80,14 @@ def get_torrents(content, all_at_once):
                         else:
                             import_torrent = input("Import torrent? (y/n)")
                         if import_torrent.upper() == 'Y':
-                            logger.debug("Importing " + item['name'] +
-                                         "hash: " + item['hash'])
+                            logger.info("Importing " + item['name'] +
+                                        " hash: " + item['hash'])
                             imported_torrents.append(curTorrent)
                             browse_torrent(item['hash'])
                             break
                         elif import_torrent.upper() == 'N':
-                            logger.debug("Skipping " + item['name'] +
-                                         " hash: " + item['hash'])
+                            logger.info("Skipping " + item['name'] +
+                                        " hash: " + item['hash'])
                             break
     cleanup(torrents, imported_torrents)
 
@@ -109,6 +108,7 @@ def browse_torrent(hash_id):
 
 
 def get_videos(content):
+    logger = logging.getLogger("get_videos")
     videos = []
     for item in content.values():
         if item['type'] == 'dir':
@@ -116,7 +116,7 @@ def get_videos(content):
         else:
             # if item is video, add to list
             if 'ext' in item and item['ext'].upper() in VIDEO_EXTS:
-                print("Found video: " + item['name'])
+                logger.info("Found video: " + item['name'])
                 path = os.path.join(base_dir,
                                     os.path.splitext(item['path'])[0]+'.strm')
                 video = {'path': path, 'name': item['name'],
@@ -128,13 +128,14 @@ def get_videos(content):
 
 
 def get_subs(content):
+    logger = logging.getLogger("get_subs")
     for item in content.values():
         if item['type'] == 'dir':
             get_subs(item['children'])
         else:
             # if item is subtitle, download
             if 'ext' in item and item['ext'].upper() in SUBS_EXTS:
-                print("Found subtitle: " + item['name'])
+                logger.info("Found subtitle: " + item['name'])
                 path = os.path.join(base_dir, item['path'])
                 sub = {'path': path, 'name': item['name'], 'url': item['url']}
                 t = threading.Thread(target=download_sub, args=((sub),))
@@ -145,6 +146,7 @@ def get_subs(content):
 
 
 def create_strm(video):
+    logger = logging.getLogger("create_strm")
     # create directory if not exists
     if not os.path.exists(os.path.dirname(video['path'])):
         try:
@@ -155,17 +157,18 @@ def create_strm(video):
                 raise
     # create strm file if not exists
     if not os.path.exists(video['path']):
-        logger.info("Creating file: " + video['path'])
+        logger.debug("Creating file: " + video['path'])
         with open(video['path'], "w") as f:
             f.write(video['url'])
     else:
-        logger.info("Skipping file " + video['path'] + " already exists")
+        logger.debug("Skipping file " + video['path'] + " already exists")
 
 # Download subtitle file
 
 
 def download_sub(sub):
     # create directory if not exists
+    logger = logging.getLogger("download_sub")
     if not os.path.exists(os.path.dirname(sub['path'])):
         try:
             os.makedirs(os.path.dirname(sub['path']))
@@ -175,19 +178,20 @@ def download_sub(sub):
                 raise
     # create sub file if not exists
     if not os.path.exists(sub['path']):
-        logger.info("Creating file: " + sub['path'])
+        logger.debug("Creating file: " + sub['path'])
         with open(sub['path'], "wb") as file:
             sub_file = requests.get(sub['url'])
             file.write(sub_file.content)
-    # else:
-        logger.info("Skipping file " + sub['path'] + " already exists")
+    else:
+        logger.debug("Skipping file " + sub['path'] + " already exists")
 
 # Check if files on disk are still available on premiumize
 # Delete if remotely deleted
 
 
 def cleanup(torrents, imported_torrents):
-    print("Cleanup...")
+    logger = logging.getLogger("cleanup")
+    logger.debug("Cleanup...")
     ondisk_hashes = []
     # Load hash db from disk
     if os.path.exists(hash_db):
@@ -207,14 +211,13 @@ def cleanup(torrents, imported_torrents):
         for torrent in torrents:
             if (od_hash['hash'] == torrent['hash'] and
                     os.path.exists(os.path.join(base_dir, od_hash['name']))):
-                print(Fore.GREEN + "Keeping " + od_hash['name'] + " on disk" +
-                      Fore.BLACK)
+                logger.debug("Keeping " + od_hash['name'] + " on disk")
                 cleaned_hashes.append(od_hash)
                 break
         else:
             if os.path.exists(os.path.join(base_dir, od_hash['name'])):
-                print(Fore.RED + "Deleting " + od_hash['name'] + " from disk" +
-                      Fore.BLACK)
+                logger.warning("Deleting " + od_hash['name'] + " from disk" +
+                               " because it was deleted on premiumize")
                 shutil.rmtree(os.path.join(base_dir, od_hash['name']))
     ondisk_hashes = cleaned_hashes
 
@@ -232,8 +235,8 @@ def cleanup(torrents, imported_torrents):
 
 
 def main():
-    global base_dir, customer_id, pin, logger
-
+    global base_dir, customer_id, pin
+    logger = logging.getLogger("main")
     parser = argparse.ArgumentParser(description=prog_description)
     config = configparser.ConfigParser()
     config['MAIN'] = {}
@@ -265,10 +268,15 @@ def main():
     debug_options.add_argument('-v', '--verbose', action='store_true',
                                help="Show verbose output")
     args = parser.parse_args()
+    logger.debug("Arguments from command line: " + str(sys.argv[1:]))
     if args.debug:
-        logger.setLevel(logging.DEBUG)
+        # logger.setLevel(logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG)
     elif args.verbose:
-        logger.setLevel(logging.INFO)
+        # logger.setLevel(logging.INFO)
+        logging.basicConfig(level=logging.INFO)
+    else:
+        logging.basicConfig(level=logging.WARNING)
     if args.user is not None:
         customer_id = args.user
         config['MAIN']['customer_id'] = args.user
