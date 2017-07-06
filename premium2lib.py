@@ -20,6 +20,10 @@ import configparser
 import colorama
 from colorama import Back, Fore
 import threading
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.CRITICAL)
 
 colorama.init()
 
@@ -48,7 +52,7 @@ SUBS_EXTS = ['SRT']
 # Get torrent list from root_list
 
 
-def get_torrents(content):
+def get_torrents(content, all_at_once):
     torrents = []
     imported_torrents = []
     for item in content:
@@ -68,18 +72,23 @@ def get_torrents(content):
                     if (od_hash['hash'] == curTorrent['hash'] and
                             os.path.exists(os.path.join(base_dir,
                                                         od_hash['name']))):
-                        print(Fore.GREEN + "Skipping, already on disk" +
-                              Fore.WHITE)
+                        print("Skipping, already on disk")
                         break
                 else:
                     while True:
-                        import_torrent = input("Import torrent? (y/n)")
+                        if all_at_once:
+                            import_torrent = 'Y'
+                        else:
+                            import_torrent = input("Import torrent? (y/n)")
                         if import_torrent.upper() == 'Y':
+                            logger.debug("Importing " + item['name'] +
+                                         "hash: " + item['hash'])
                             imported_torrents.append(curTorrent)
                             browse_torrent(item['hash'])
                             break
                         elif import_torrent.upper() == 'N':
-                            print(Fore.GREEN + "Skipping..." + Fore.WHITE)
+                            logger.debug("Skipping " + item['name'] +
+                                         " hash: " + item['hash'])
                             break
     cleanup(torrents, imported_torrents)
 
@@ -90,11 +99,9 @@ def browse_torrent(hash_id):
                             params={'customer_id': customer_id, 'pin': pin,
                                     'hash': hash_id})).json()
     if 'content' in results:
-        # print(results['content'])
         get_subs(results['content'])
         videos = get_videos(results['content'])
         for video in videos:
-            # print(video)
             # Generate strm files from video results
             create_strm(video)
 
@@ -104,7 +111,6 @@ def browse_torrent(hash_id):
 def get_videos(content):
     videos = []
     for item in content.values():
-        # print (item)
         if item['type'] == 'dir':
             videos += get_videos(item['children'])
         else:
@@ -123,7 +129,6 @@ def get_videos(content):
 
 def get_subs(content):
     for item in content.values():
-        # print (item)
         if item['type'] == 'dir':
             get_subs(item['children'])
         else:
@@ -133,7 +138,7 @@ def get_subs(content):
                 path = os.path.join(base_dir, item['path'])
                 sub = {'path': path, 'name': item['name'], 'url': item['url']}
                 t = threading.Thread(target=download_sub, args=((sub),))
-                t.daemon = True
+                # t.daemon = True
                 t.start()
 
 # Generate strm file
@@ -144,17 +149,17 @@ def create_strm(video):
     if not os.path.exists(os.path.dirname(video['path'])):
         try:
             os.makedirs(os.path.dirname(video['path']))
-            print("Created path: " + os.path.dirname(video['path']))
+            logger.debug("Created path: " + os.path.dirname(video['path']))
         except OSError as exc:  # Guard against race condition
             if exc.errno != errno.EEXIST:
                 raise
     # create strm file if not exists
     if not os.path.exists(video['path']):
-        print("Creating file: " + video['path'])
+        logger.info("Creating file: " + video['path'])
         with open(video['path'], "w") as f:
             f.write(video['url'])
     else:
-        print("Skipping file " + video['path'] + " already exists")
+        logger.info("Skipping file " + video['path'] + " already exists")
 
 # Download subtitle file
 
@@ -164,18 +169,18 @@ def download_sub(sub):
     if not os.path.exists(os.path.dirname(sub['path'])):
         try:
             os.makedirs(os.path.dirname(sub['path']))
-            # print("Created path: " + os.path.dirname(sub['path']))
+            logger.debug("Created path: " + os.path.dirname(sub['path']))
         except OSError as exc:  # Guard against race condition
             if exc.errno != errno.EEXIST:
                 raise
     # create sub file if not exists
     if not os.path.exists(sub['path']):
-        # print("Creating file: " + sub['path'])
+        logger.info("Creating file: " + sub['path'])
         with open(sub['path'], "wb") as file:
             sub_file = requests.get(sub['url'])
             file.write(sub_file.content)
     # else:
-        # print("Skipping file " + sub['path'] + " already exists")
+        logger.info("Skipping file " + sub['path'] + " already exists")
 
 # Check if files on disk are still available on premiumize
 # Delete if remotely deleted
@@ -217,7 +222,7 @@ def cleanup(torrents, imported_torrents):
     if not os.path.exists(os.path.dirname(hash_db)):
         try:
             os.makedirs(os.path.dirname(hash_db))
-            print("Created path: " + os.path.dirname(hash_db))
+            logger.debug("Created path: " + os.path.dirname(hash_db))
         except OSError as exc:  # Guard against race condition
             if exc.errno != errno.EEXIST:
                 raise
@@ -227,7 +232,7 @@ def cleanup(torrents, imported_torrents):
 
 
 def main():
-    global base_dir, customer_id, pin
+    global base_dir, customer_id, pin, logger
 
     parser = argparse.ArgumentParser(description=prog_description)
     config = configparser.ConfigParser()
@@ -251,8 +256,19 @@ def main():
         parser.add_argument('-p', '--pin', help="Premiumize PIN")
         parser.add_argument('-o', '--outdir', metavar="PATH",
                             help="Output directory for generated files")
-
+    parser.add_argument('-a', '--all', action='store_true',
+                        help="Import all videos from premiumize at once")
+    debug_group = parser.add_argument_group("Debug", "Debug related options")
+    debug_options = debug_group.add_mutually_exclusive_group()
+    debug_options.add_argument('-d', '--debug', action="store_true",
+                               help="Show debug output")
+    debug_options.add_argument('-v', '--verbose', action='store_true',
+                               help="Show verbose output")
     args = parser.parse_args()
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+    elif args.verbose:
+        logger.setLevel(logging.INFO)
     if args.user is not None:
         customer_id = args.user
         config['MAIN']['customer_id'] = args.user
@@ -271,7 +287,7 @@ def main():
 
     # Start actual creation process
     try:
-        get_torrents(root_list['content'])
+        get_torrents(root_list['content'], args.all)
     except KeyboardInterrupt:
         print("Exiting...")
         sys.exit()
