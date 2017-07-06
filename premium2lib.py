@@ -295,7 +295,7 @@ def main():
         config['MAIN']['base_dir'] = os.path.join(args.outdir, '')
 
     logger = logging.getLogger("main")
-    logger.debug("Arguments from command line: " + str(sys.argv))
+    logger.debug("Arguments from command line: " + str(sys.argv[1:]))
 
     with open(config_file, 'w') as configfile:
         config.write(configfile)
