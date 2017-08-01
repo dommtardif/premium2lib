@@ -21,6 +21,8 @@ import colorama
 from colorama import Back
 import threading
 import logging
+from datetime import timedelta, datetime
+
 __version__ = '0.17'
 
 
@@ -58,7 +60,9 @@ def get_torrents(content, all_at_once):
     for item in content:
             if item['type'] == 'torrent':
                 ondisk_hashes = []
-                curTorrent = {'name': item['name'], 'hash': item['hash']}
+                curTorrent = {'name': item['name'], 'hash': item['hash'],
+                              'date': datetime.today().strftime("%d%m%y"),
+                              'skip': False}
                 torrents.append(curTorrent)
                 print(Back.GREEN + "Found torrent" + Back.BLACK)
                 print("Torrent: " + item['name'])
@@ -71,9 +75,13 @@ def get_torrents(content, all_at_once):
                 # check for unique hash before import
                 for od_hash in ondisk_hashes:
                     if (od_hash['hash'] == curTorrent['hash'] and
-                            os.path.exists(os.path.join(base_dir,
-                                                        od_hash['name']))):
-                        print("Skipping, already on disk")
+                        (datetime.today() -
+                         datetime.strptime(od_hash['date'], "%d%m%y")) <
+                        timedelta(7) and
+                        (od_hash['skip'] or
+                        os.path.exists(os.path.join(base_dir,
+                                                    od_hash['name'])))):
+                        print("Skipping, already on disk or marked as skip")
                         break
                 else:
                     while True:
@@ -88,6 +96,8 @@ def get_torrents(content, all_at_once):
                             browse_torrent(item['hash'])
                             break
                         elif import_torrent.upper() == 'N':
+                            curTorrent['skip'] = True
+                            imported_torrents.append(curTorrent)
                             logger.debug("Skipping " + item['name'] +
                                          " hash: " + item['hash'])
                             break
@@ -140,7 +150,8 @@ def get_subs(content):
                 logger.info("Found subtitle: " + item['name'])
                 path = os.path.join(base_dir, item['path'])
                 sub = {'path': path, 'name': item['name'], 'url': item['url']}
-                t = threading.Thread(target=download_sub, args=((sub),))
+                t = threading.Thread(target=download_sub, args=((sub),),
+                                     name="Download: " + item['name'])
                 t.start()
 
 # Generate strm file
@@ -210,9 +221,8 @@ def cleanup(torrents, imported_torrents):
     cleaned_hashes = []
     for od_hash in ondisk_hashes:
         for torrent in torrents:
-            if (od_hash['hash'] == torrent['hash'] and
-                    os.path.exists(os.path.join(base_dir, od_hash['name']))):
-                logger.info("Keeping " + od_hash['name'] + " on disk")
+            if (od_hash['hash'] == torrent['hash']):
+                logger.info("Keeping " + od_hash['name'])
                 cleaned_hashes.append(od_hash)
                 break
         else:
@@ -222,6 +232,9 @@ def cleanup(torrents, imported_torrents):
                 shutil.rmtree(os.path.join(base_dir, od_hash['name']))
                 logger.debug("Deleted " +
                              os.path.join(base_dir, od_hash['name']))
+            else:
+                logger.warning(od_hash['name'] + " has been removed " +
+                               "from premiumize")
     ondisk_hashes = cleaned_hashes
 
     # create directory if not exists
@@ -273,6 +286,8 @@ def main():
                                help="Show debug output")
     debug_options.add_argument('-v', '--verbose', action='store_true',
                                help="Show verbose output")
+    debug_options.add_argument('-q', '--quiet', action='store_true',
+                               help="Disable output")
     parser.add_argument('--version', action='version',
                         version='%(prog)s {version}'
                         .format(version=__version__))
@@ -282,6 +297,9 @@ def main():
         logging.basicConfig(level=logging.DEBUG)
     elif args.verbose:
         logging.basicConfig(level=logging.INFO)
+    elif args.quiet:
+        logging.basicConfig(level=60)
+        sys.stdout = open(os.devnull, "w")
     else:
         logging.basicConfig(level=logging.WARNING)
     if args.user is not None:
@@ -309,6 +327,13 @@ def main():
     except KeyboardInterrupt:
         print("Exiting...")
         sys.exit()
+
+    if threading.active_count() > 1:
+        print("Waiting for download processes to finish")
+        logger.debug("Active threads: " + str(threading.active_count()))
+    while threading.active_count() > 1:
+        pass
+    print("Exiting...")
 
 if __name__ == "__main__":
     main()
