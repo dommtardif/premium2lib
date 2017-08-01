@@ -106,17 +106,26 @@ def get_torrents(content, all_at_once):
 
 # Browse content of torrent for videos
 def browse_torrent(hash_id):
-    while True:
+    for i in range(0, 5):  # Try 5 times
         try:
             results = (requests.
-                       get('https://www.premiumize.me/api/torrent/browse',
-                           params={'customer_id': customer_id, 'pin': pin,
-                                   'hash': hash_id})).json()
+                       post('https://www.premiumize.me/api/torrent/browse',
+                            data={'customer_id': customer_id, 'pin': pin,
+                                  'hash': hash_id})).json()
         except requests.exceptions.ConnectionError:
             print("Unable to contact premiumize, waiting 60 secs")
             time.sleep(60)
+        except requests.exceptions.HTTPError:
+            print("HTTP Error, waiting")
+            time.sleep(60)
+        except requests.exceptions.RequestException:
+            print("Unable to handle exception, quitting")
+            sys.exit(1)
         else:
             break
+    else:
+        print("Unable to handle exception, quitting")
+        sys.exit(1)
 
     if 'content' in results:
         get_subs(results['content'])
@@ -201,14 +210,23 @@ def download_sub(sub):
     if not os.path.exists(sub['path']):
         logger.debug("Creating file: " + sub['path'])
         with open(sub['path'], "wb") as file:
-            while True:
+            for i in range(0, 5):  # Try 5 times
                 try:
                     sub_file = requests.get(sub['url'])
                 except requests.exceptions.ConnectionError:
                     print("Unable to contact premiumize, waiting 60 secs")
                     time.sleep(60)
+                except requests.exceptions.HTTPError:
+                    print("HTTP Error, waiting")
+                    time.sleep(60)
+                except requests.exceptions.RequestException:
+                    print("Unable to handle exception, quitting")
+                    sys.exit(1)
                 else:
                     break
+            else:
+                print("Unable to handle exception, quitting")
+                sys.exit(1)
             file.write(sub_file.content)
     else:
         logger.debug("Skipping file " + sub['path'] + " already exists")
@@ -336,15 +354,30 @@ def main():
         logger.debug("Saved config to file: " + config_file)
 
     # Start actual creation process
+    for i in range(0, 5):  # Try 5 times
+        try:
+            root_list = (requests.post(
+                         'https://www.premiumize.me/api/folder/list',
+                         data={'customer_id': customer_id, 'pin': pin})).json()
+        except requests.exceptions.ConnectionError:
+            print("Unable to contact premiumize, waiting 60 secs")
+            time.sleep(60)
+        except requests.exceptions.HTTPError:
+            print("HTTP Error, waiting")
+            time.sleep(60)
+        except requests.exceptions.RequestException:
+            print("Unable to handle exception, quitting")
+            sys.exit(1)
+        else:
+            break
+    else:
+        print("Unable to handle exception, quitting")
+        sys.exit(1)
+
     try:
-        root_list = (requests.get('https://www.premiumize.me/api/folder/list',
-                     params={'customer_id': customer_id, 'pin': pin})).json()
         get_torrents(root_list['content'], args.all)
     except KeyboardInterrupt:
         print("Exiting...")
-        sys.exit(0)
-    except requests.exceptions.ConnectionError:
-        print("Unable to connect to premiumize, please try again later")
         sys.exit(1)
 
     if threading.active_count() > 1:
@@ -353,6 +386,7 @@ def main():
     while threading.active_count() > 1:
         pass
     print("Exiting...")
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
