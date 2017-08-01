@@ -8,7 +8,7 @@
 # https://github.com/tknorris/
 #
 ##########################
-
+import time
 import requests
 import os
 import errno
@@ -106,9 +106,18 @@ def get_torrents(content, all_at_once):
 
 # Browse content of torrent for videos
 def browse_torrent(hash_id):
-    results = (requests.get('https://www.premiumize.me/api/torrent/browse',
-                            params={'customer_id': customer_id, 'pin': pin,
-                                    'hash': hash_id})).json()
+    while True:
+        try:
+            results = (requests.
+                       get('https://www.premiumize.me/api/torrent/browse',
+                           params={'customer_id': customer_id, 'pin': pin,
+                                   'hash': hash_id})).json()
+        except requests.exceptions.ConnectionError:
+            print("Unable to contact premiumize, waiting 60 secs")
+            time.sleep(60)
+        else:
+            break
+
     if 'content' in results:
         get_subs(results['content'])
         videos = get_videos(results['content'])
@@ -192,7 +201,14 @@ def download_sub(sub):
     if not os.path.exists(sub['path']):
         logger.debug("Creating file: " + sub['path'])
         with open(sub['path'], "wb") as file:
-            sub_file = requests.get(sub['url'])
+            while True:
+                try:
+                    sub_file = requests.get(sub['url'])
+                except requests.exceptions.ConnectionError:
+                    print("Unable to contact premiumize, waiting 60 secs")
+                    time.sleep(60)
+                else:
+                    break
             file.write(sub_file.content)
     else:
         logger.debug("Skipping file " + sub['path'] + " already exists")
@@ -326,7 +342,10 @@ def main():
         get_torrents(root_list['content'], args.all)
     except KeyboardInterrupt:
         print("Exiting...")
-        sys.exit()
+        sys.exit(0)
+    except requests.exceptions.ConnectionError:
+        print("Unable to connect to premiumize, please try again later")
+        sys.exit(1)
 
     if threading.active_count() > 1:
         print("Waiting for download processes to finish")
