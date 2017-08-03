@@ -94,7 +94,7 @@ def get_torrents(content, all_at_once):
                             logger.debug("Importing " + item['name'] +
                                          " hash: " + item['hash'])
                             imported_torrents.append(curTorrent)
-                            browse_torrent(item['hash'])
+                            browse_torrent(item['hash'], all_at_once)
                             break
                         elif import_torrent.upper() == 'N':
                             curTorrent['skip'] = True
@@ -106,34 +106,36 @@ def get_torrents(content, all_at_once):
 
 
 # Browse content of torrent for videos
-def browse_torrent(hash_id):
-    for i in range(0, 5):  # Try 5 times
+def browse_torrent(hash_id, all_at_once):
+    logger = logging.getLogger("browse_torrent")
+    for i in range(1, 6):  # Try 5 times
         try:
             results = (requests.
                        post('https://www.premiumize.me/api/torrent/browse',
                             data={'customer_id': customer_id, 'pin': pin,
                                   'hash': hash_id})).json()
-        except requests.exceptions.ConnectionError:
-            print("Unable to contact premiumize, waiting 60 secs")
-            time.sleep(60)
-        except requests.exceptions.HTTPError:
-            print("HTTP Error, waiting")
-            time.sleep(60)
-        except requests.exceptions.RequestException:
-            print("Unable to handle exception, quitting")
+        except (requests.ConnectionError,
+                requests.HTTPError, requests.Timeout) as e:
+            logger.warning("Error getting torrent " + hash_id)
+            logger.warning("{0}".format(e))
+            logger.warning("Retry: " + str(i) + "/5")
+            time.sleep(10)
+        except requests.RequestException as e:
+            logger.critical("{0}".format(e))
+            logger.critical("Unable to handle exception, quitting")
             sys.exit(1)
         else:
             break
     else:
-        print("Unable to handle exception, quitting")
+        logger.critical("Unable to handle exception, quitting")
         sys.exit(1)
 
     if 'content' in results:
-        get_subs(results['content'])
+        get_subs(results['content'], all_at_once)
         videos = get_videos(results['content'])
         for video in videos:
             # Generate strm files from video results
-            create_strm(video)
+            create_strm(video, all_at_once)
 
 # Generate array of videos from torrent
 
@@ -158,25 +160,26 @@ def get_videos(content):
 # Get subs from torrent
 
 
-def get_subs(content):
+def get_subs(content, all_at_once):
     logger = logging.getLogger("get_subs")
     for item in content.values():
         if item['type'] == 'dir':
-            get_subs(item['children'])
+            get_subs(item['children'], all_at_once)
         else:
             # if item is subtitle, download
             if 'ext' in item and item['ext'].upper() in SUBS_EXTS:
                 logger.info("Found subtitle: " + item['name'])
                 path = os.path.join(base_dir, item['path'])
                 sub = {'path': path, 'name': item['name'], 'url': item['url']}
-                t = threading.Thread(target=download_sub, args=((sub),),
+                t = threading.Thread(target=download_sub,
+                                     args=(sub, all_at_once),
                                      name="Download: " + item['name'])
                 t.start()
 
 # Generate strm file
 
 
-def create_strm(video):
+def create_strm(video, all_at_once):
     logger = logging.getLogger("create_strm")
     # create directory if not exists
     if not os.path.exists(os.path.dirname(video['path'])):
@@ -187,17 +190,27 @@ def create_strm(video):
             if exc.errno != errno.EEXIST:
                 raise
     # create strm file if not exists
-    if not os.path.exists(video['path']):
-        logger.debug("Creating file: " + video['path'])
-        with open(video['path'], "w") as f:
-            f.write(video['url'])
-    else:
-        logger.debug("Skipping file " + video['path'] + " already exists")
+    logger.debug("Creating file: " + video['path'])
+    while True:
+        try:
+            with open(video['path'], "w") as f:
+                f.write(video['url'])
+        except Exception as e:
+            logger.warning("{0}".format(e))
+            e_handling = input("(R)etry, (S)kip, (A)bort?")
+            if e_handling.upper() == 'S' or all_at_once:
+                break
+            elif e_handling.upper() == 'A':
+                sys.exit(1)
+            else:
+                pass
+        else:
+            break
 
 # Download subtitle file
 
 
-def download_sub(sub):
+def download_sub(sub, all_at_once):
     # create directory if not exists
     logger = logging.getLogger("download_sub")
     if not os.path.exists(os.path.dirname(sub['path'])):
@@ -210,25 +223,41 @@ def download_sub(sub):
     # create sub file if not exists
     if not os.path.exists(sub['path']):
         logger.debug("Creating file: " + sub['path'])
-        with open(sub['path'], "wb") as file:
-            for i in range(0, 5):  # Try 5 times
-                try:
-                    sub_file = requests.get(sub['url'])
-                except requests.exceptions.ConnectionError:
-                    print("Unable to contact premiumize, waiting 60 secs")
-                    time.sleep(60)
-                except requests.exceptions.HTTPError:
-                    print("HTTP Error, waiting")
-                    time.sleep(60)
-                except requests.exceptions.RequestException:
-                    print("Unable to handle exception, quitting")
+        while True:
+            try:
+                with open(sub['path'], "wb") as file:
+                    for i in range(1, 6):  # Try 5 times
+                        try:
+                            sub_file = requests.get(sub['url'])
+                        except (requests.ConnectionError,
+                                requests.HTTPError, requests.Timeout) as e:
+                            logger.warning("Error getting subtitle " +
+                                           sub['url'])
+                            logger.warning("{0}".format(e))
+                            logger.warning("Retry: " + str(i) + "/5")
+                            time.sleep(10)
+                        except requests.RequestException as e:
+                            logger.critical("{0}".format(e))
+                            logger.critical("Unable to handle exception," +
+                                            "quitting")
+                            sys.exit(1)
+                        else:
+                            break
+                    else:
+                        print("Unable to handle exception, quitting")
+                        sys.exit(1)
+                    file.write(sub_file.content)
+            except Exception as e:
+                logger.warning("{0}".format(e))
+                e_handling = input("(R)etry, (S)kip, (A)bort?")
+                if e_handling.upper() == 'S' or all_at_once:
+                    break
+                elif e_handling.upper() == 'A':
                     sys.exit(1)
                 else:
-                    break
+                    pass
             else:
-                print("Unable to handle exception, quitting")
-                sys.exit(1)
-            file.write(sub_file.content)
+                break
     else:
         logger.debug("Skipping file " + sub['path'] + " already exists")
 
@@ -315,29 +344,35 @@ def main():
     config['MAIN'] = {}
 
     # if config not exists, make args required
+    args_req = True
     if not os.path.exists(config_file):
-        parser.add_argument('-u', '--user', metavar="ID", required=True,
-                            help="Premiumize customer id")
-        parser.add_argument('-p', '--pin', required=True,
-                            help="Premiumize PIN")
-        parser.add_argument('-o', '--outdir', required=True, metavar="PATH",
-                            help="Output directory for generated files")
+        args_req = True
     # Config file exists, load its values first, override with args
     else:
-        config.read(config_file)
-        customer_id = config['MAIN']['customer_id']
-        pin = config['MAIN']['pin']
-        base_dir = config['MAIN']['base_dir']
+        try:
+            config.read(config_file)
+            customer_id = config.get('MAIN', 'customer_id')
+            pin = config.get('MAIN', 'pin')
+            base_dir = config.get('MAIN', 'base_dir')
+        except (configparser.Error) as e:
+            print("{0}".format(e))
+            print("Error reading config file, ignoring")
+            customer_id = ""
+            pin = ""
+            base_dir = ""
+            args_req = True
+        else:
+            args_req = False
 
-        parser.add_argument('-u', '--user', metavar="ID",
-                            help="Premiumize customer id")
-        parser.add_argument('-p', '--pin', help="Premiumize PIN")
-        parser.add_argument('-o', '--outdir', metavar="PATH",
-                            help="Output directory for generated files")
-
+    parser.add_argument('-u', '--user', metavar="ID", required=args_req,
+                        help="Premiumize customer id")
+    parser.add_argument('-p', '--pin', required=args_req,
+                        help="Premiumize PIN")
+    parser.add_argument('-o', '--outdir', required=args_req, metavar="PATH",
+                        help="Output directory for generated files")
     parser.add_argument('-a', '--all', action='store_true',
                         help="Import all videos from premiumize at once")
-    debug_group = parser.add_argument_group("Debug", "Debug related options")
+    debug_group = parser.add_argument_group("Ouput", "Output related options")
     debug_options = debug_group.add_mutually_exclusive_group()
     debug_options.add_argument('-d', '--debug', action="store_true",
                                help="Show debug output")
@@ -355,7 +390,6 @@ def main():
     elif args.verbose:
         logging.basicConfig(level=logging.INFO)
     elif args.quiet:
-        logging.basicConfig(level=60)
         sys.stdout = open(os.devnull, "w")
     else:
         logging.basicConfig(level=logging.WARNING)
@@ -377,24 +411,25 @@ def main():
         logger.debug("Saved config to file: " + config_file)
 
     # Start actual creation process
-    for i in range(0, 5):  # Try 5 times
+    for i in range(1, 6):  # Try 5 times
         try:
             root_list = (requests.post(
                          'https://www.premiumize.me/api/folder/list',
                          data={'customer_id': customer_id, 'pin': pin})).json()
-        except requests.exceptions.ConnectionError:
-            print("Unable to contact premiumize, waiting 60 secs")
-            time.sleep(60)
-        except requests.exceptions.HTTPError:
-            print("HTTP Error, waiting")
-            time.sleep(60)
-        except requests.exceptions.RequestException:
-            print("Unable to handle exception, quitting")
+        except (requests.ConnectionError,
+                requests.HTTPError, requests.Timeout) as e:
+            logger.warning("Error getting root folder from premiumize")
+            logger.warning("{0}".format(e))
+            logger.warning("Retry: " + str(i) + "/5")
+            time.sleep(10)
+        except requests.RequestException as e:
+            logger.critical("{0}".format(e))
+            logger.critical("Unable to handle exception, quitting")
             sys.exit(1)
         else:
             break
     else:
-        print("Unable to handle exception, quitting")
+        logger.critical("Unable to handle exception, quitting")
         sys.exit(1)
 
     try:
