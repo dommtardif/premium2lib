@@ -13,7 +13,6 @@ import requests
 import os
 import errno
 import ast
-import shutil
 import sys
 import argparse
 import configparser
@@ -21,6 +20,8 @@ import colorama
 from colorama import Back
 import threading
 import logging
+from pathlib import Path
+
 from datetime import timedelta, datetime
 
 __version__ = '0.17'
@@ -241,16 +242,23 @@ def cleanup(torrents, imported_torrents):
     ondisk_hashes = []
     # Load hash db from disk
     if os.path.exists(hash_db):
-        with open(hash_db, 'r') as file:
-            raw = file.read()
-            ondisk_hashes = ast.literal_eval(raw)
-    # check for unique hash before import
-    for im_torrent in imported_torrents:
-        for od_hash in ondisk_hashes:
-            if od_hash['hash'] == im_torrent['hash']:
-                break
-        else:
-            ondisk_hashes.append(im_torrent)
+        try:
+            with open(hash_db, 'r') as file:
+                raw = file.read()
+                ondisk_hashes = ast.literal_eval(raw)
+            # check for unique hash before import
+            for im_torrent in imported_torrents:
+                for od_hash in ondisk_hashes:
+                    if od_hash['hash'] == im_torrent['hash']:
+                        break
+                else:
+                    ondisk_hashes.append(im_torrent)
+        except Exception as e:
+            logger.warning("{0}".format(e))
+            logger.warning("Assuming empty hash db")
+            ondisk_hashes = imported_torrents
+    else:
+        ondisk_hashes = imported_torrents
     # compare ondisk_hashes with torrents hashes
     cleaned_hashes = []
     for od_hash in ondisk_hashes:
@@ -263,25 +271,40 @@ def cleanup(torrents, imported_torrents):
             if os.path.exists(os.path.join(base_dir, od_hash['name'])):
                 logger.warning("Deleting " + od_hash['name'] + " from disk" +
                                " because it was deleted on premiumize")
-                shutil.rmtree(os.path.join(base_dir, od_hash['name']))
-                logger.debug("Deleted " +
-                             os.path.join(base_dir, od_hash['name']))
+                try:
+                    torrent_path = Path(os.path.join(base_dir,
+                                                     od_hash['name']))
+                    for f in torrent_path.glob("**/*.strm"):
+                        print("Deleting " + str(f))
+                        os.remove(str(f))
+                except Exception as e:
+                    logger.warning("{0}".format(e))
+                    logger.warning("Unable to properly delete torrent")
+                    logger.warning("Keeping in db for next cleanup")
+                    cleaned_hashes.append(od_hash)
+                else:
+                    logger.debug("Deleted " +
+                                 os.path.join(base_dir, od_hash['name']))
             else:
                 logger.warning(od_hash['name'] + " has been removed " +
                                "from premiumize")
     ondisk_hashes = cleaned_hashes
 
     # create directory if not exists
-    if not os.path.exists(os.path.dirname(hash_db)):
-        try:
-            os.makedirs(os.path.dirname(hash_db))
-            logger.debug("Created path: " + os.path.dirname(hash_db))
-        except OSError as exc:  # Guard against race condition
-            if exc.errno != errno.EEXIST:
-                raise
-    # save hash db to disk
-    with open(hash_db, "w") as file:
-        file.write(str(ondisk_hashes))
+    try:
+        if not os.path.exists(os.path.dirname(hash_db)):
+            try:
+                os.makedirs(os.path.dirname(hash_db))
+                logger.debug("Created path: " + os.path.dirname(hash_db))
+            except OSError as exc:  # Guard against race condition
+                if exc.errno != errno.EEXIST:
+                    raise
+        # save hash db to disk
+        with open(hash_db, "w") as file:
+            file.write(str(ondisk_hashes))
+    except Exception as e:
+        logger.warning("{0}".format(e))
+        logger.warning("Unable to save hash db to disc")
 
 
 def main():
