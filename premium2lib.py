@@ -51,16 +51,34 @@ VIDEO_EXTS = ['M4V', '3G2', '3GP', 'NSV', 'TP', 'TS', 'TY', 'PLS', 'RM',
               'MPLS', 'WEBM', 'BDMV', 'WTV']
 SUBS_EXTS = ['SRT']
 
+
+def load_hashdb():
+    # Load hash db from disk
+    logger = logging.getLogger("load_hashdb")
+    if os.path.exists(hash_db):
+        try:
+            with open(hash_db, 'r') as file:
+                raw = file.read()
+                ondisk_hashes = ast.literal_eval(raw)
+        except Exception as e:
+            logger.warning("{0}".format(e))
+            logger.warning("Assuming empty hash db")
+            ondisk_hashes = []
+    else:
+        ondisk_hashes = []
+    return ondisk_hashes
+
 # Get torrent list from root_list
 
 
 def get_torrents(content, all_at_once):
+    days_before_refresh = 7
     logger = logging.getLogger("get_torrents")
     torrents = []
     imported_torrents = []
+    ondisk_hashes = load_hashdb()
     for item in content:
             if item['type'] == 'torrent':
-                ondisk_hashes = []
                 curTorrent = {'name': item['name'], 'hash': item['hash'],
                               'date': datetime.today().strftime("%d%m%y"),
                               'skip': False}
@@ -69,21 +87,19 @@ def get_torrents(content, all_at_once):
                 print("Torrent: " + item['name'])
                 print("Hash: " + item['hash'])
                 # Load hash db from disk
-                if os.path.exists(hash_db):
-                    with open(hash_db, 'r') as file:
-                        raw = file.read()
-                        ondisk_hashes = ast.literal_eval(raw)
-                # check for unique hash before import
-                for od_hash in ondisk_hashes:
-                    if (od_hash['hash'] == curTorrent['hash'] and
-                        (datetime.today() -
-                         datetime.strptime(od_hash['date'], "%d%m%y")) <
-                        timedelta(7) and
-                        (od_hash['skip'] or
-                        os.path.exists(os.path.join(base_dir,
-                                                    od_hash['name'])))):
-                        print("Skipping, already on disk or marked as skip")
-                        break
+                if not ondisk_hashes == []:
+                    # check for unique hash before import
+                    for od_hash in ondisk_hashes:
+                        if (od_hash['hash'] == curTorrent['hash'] and
+                            (datetime.today() -
+                             datetime.strptime(od_hash['date'], "%d%m%y")) <
+                            timedelta(days_before_refresh) and
+                            (od_hash['skip'] or
+                            os.path.exists(os.path.join(base_dir,
+                                                        od_hash['name'])))):
+                            print("Skipping, already on disk or" +
+                                  "marked as skip")
+                            break
                 else:
                     while True:
                         if all_at_once:
@@ -107,8 +123,9 @@ def get_torrents(content, all_at_once):
 
 # Browse content of torrent for videos
 def browse_torrent(hash_id, all_at_once):
+    number_of_retries = 5
     logger = logging.getLogger("browse_torrent")
-    for i in range(1, 6):  # Try 5 times
+    for i in range(1, number_of_retries + 1):
         try:
             results = (requests.
                        post('https://www.premiumize.me/api/torrent/browse',
@@ -118,7 +135,7 @@ def browse_torrent(hash_id, all_at_once):
                 requests.HTTPError, requests.Timeout) as e:
             logger.warning("Error getting torrent " + hash_id)
             logger.warning("{0}".format(e))
-            logger.warning("Retry: " + str(i) + "/5")
+            logger.warning("Retry: " + str(i) + "/" + str(number_of_retries))
             time.sleep(10)
         except requests.RequestException as e:
             logger.critical("{0}".format(e))
@@ -211,8 +228,9 @@ def create_strm(video, all_at_once):
 
 
 def download_sub(sub, all_at_once):
-    # create directory if not exists
+    number_of_retries = 5
     logger = logging.getLogger("download_sub")
+    # create directory if not exists
     if not os.path.exists(os.path.dirname(sub['path'])):
         try:
             os.makedirs(os.path.dirname(sub['path']))
@@ -226,7 +244,7 @@ def download_sub(sub, all_at_once):
         while True:
             try:
                 with open(sub['path'], "wb") as file:
-                    for i in range(1, 6):  # Try 5 times
+                    for i in range(1, number_of_retries + 1):
                         try:
                             sub_file = requests.get(sub['url'])
                         except (requests.ConnectionError,
@@ -234,7 +252,8 @@ def download_sub(sub, all_at_once):
                             logger.warning("Error getting subtitle " +
                                            sub['url'])
                             logger.warning("{0}".format(e))
-                            logger.warning("Retry: " + str(i) + "/5")
+                            logger.warning("Retry: " + str(i) + "/" +
+                                           str(number_of_retries))
                             time.sleep(10)
                         except requests.RequestException as e:
                             logger.critical("{0}".format(e))
@@ -268,26 +287,16 @@ def download_sub(sub, all_at_once):
 def cleanup(torrents, imported_torrents):
     logger = logging.getLogger("cleanup")
     logger.info("Cleanup...")
-    ondisk_hashes = []
+    ondisk_hashes = load_hashdb()
     # Load hash db from disk
-    if os.path.exists(hash_db):
-        try:
-            with open(hash_db, 'r') as file:
-                raw = file.read()
-                ondisk_hashes = ast.literal_eval(raw)
-            # check for unique hash before import
-            for im_torrent in imported_torrents:
-                for od_hash in ondisk_hashes:
-                    if od_hash['hash'] == im_torrent['hash']:
-                        break
-                else:
-                    ondisk_hashes.append(im_torrent)
-        except Exception as e:
-            logger.warning("{0}".format(e))
-            logger.warning("Assuming empty hash db")
-            ondisk_hashes = imported_torrents
-    else:
-        ondisk_hashes = imported_torrents
+    if not ondisk_hashes == []:
+        # check for unique hash before import
+        for im_torrent in imported_torrents:
+            for od_hash in ondisk_hashes:
+                if od_hash['hash'] == im_torrent['hash']:
+                    break
+            else:
+                ondisk_hashes.append(im_torrent)
     # compare ondisk_hashes with torrents hashes
     cleaned_hashes = []
     for od_hash in ondisk_hashes:
@@ -411,7 +420,8 @@ def main():
         logger.debug("Saved config to file: " + config_file)
 
     # Start actual creation process
-    for i in range(1, 6):  # Try 5 times
+    number_of_retries = 5
+    for i in range(1, number_of_retries + 1):  # Try 5 times
         try:
             root_list = (requests.post(
                          'https://www.premiumize.me/api/folder/list',
@@ -420,7 +430,7 @@ def main():
                 requests.HTTPError, requests.Timeout) as e:
             logger.warning("Error getting root folder from premiumize")
             logger.warning("{0}".format(e))
-            logger.warning("Retry: " + str(i) + "/5")
+            logger.warning("Retry: " + str(i) + "/" + str(number_of_retries))
             time.sleep(10)
         except requests.RequestException as e:
             logger.critical("{0}".format(e))
