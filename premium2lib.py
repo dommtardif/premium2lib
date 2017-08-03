@@ -16,8 +16,6 @@ import ast
 import sys
 import argparse
 import configparser
-import colorama
-from colorama import Back
 import threading
 import logging
 from pathlib import Path
@@ -25,9 +23,6 @@ from pathlib import Path
 from datetime import timedelta, datetime
 
 __version__ = '0.17'
-
-
-colorama.init()
 
 prog_description = ("Generates kodi-compatible strm files from torrents on "
                     "premiumize. Parameters are required for first run to "
@@ -83,10 +78,10 @@ def get_torrents(content, all_at_once):
                               'date': datetime.today().strftime("%d%m%y"),
                               'skip': False}
                 torrents.append(curTorrent)
-                print(Back.GREEN + "Found torrent" + Back.BLACK)
+                print("----------   Found torrent   ----------")
                 print("Torrent: " + item['name'])
                 print("Hash: " + item['hash'])
-                # Load hash db from disk
+                skip = False
                 if not ondisk_hashes == []:
                     # check for unique hash before import
                     for od_hash in ondisk_hashes:
@@ -98,26 +93,26 @@ def get_torrents(content, all_at_once):
                             os.path.exists(os.path.join(base_dir,
                                                         od_hash['name'])))):
                             print("Skipping, already on disk or" +
-                                  "marked as skip")
+                                  " marked as skip")
+                            skip = True
                             break
-                else:
-                    while True:
-                        if all_at_once:
-                            import_torrent = 'Y'
-                        else:
-                            import_torrent = input("Import torrent? (y/n)")
-                        if import_torrent.upper() == 'Y':
-                            logger.debug("Importing " + item['name'] +
-                                         " hash: " + item['hash'])
-                            imported_torrents.append(curTorrent)
-                            browse_torrent(item['hash'], all_at_once)
-                            break
-                        elif import_torrent.upper() == 'N':
-                            curTorrent['skip'] = True
-                            imported_torrents.append(curTorrent)
-                            logger.debug("Skipping " + item['name'] +
-                                         " hash: " + item['hash'])
-                            break
+                while not skip:
+                    if all_at_once:
+                        import_torrent = 'Y'
+                    else:
+                        import_torrent = input("Import torrent? (y/n)")
+                    if import_torrent.upper() == 'Y':
+                        logger.debug("Importing " + item['name'] +
+                                     " hash: " + item['hash'])
+                        imported_torrents.append(curTorrent)
+                        browse_torrent(item['hash'], all_at_once)
+                        break
+                    elif import_torrent.upper() == 'N':
+                        curTorrent['skip'] = True
+                        imported_torrents.append(curTorrent)
+                        logger.debug("Skipping " + item['name'] +
+                                     " hash: " + item['hash'])
+                        break
     cleanup(torrents, imported_torrents)
 
 
@@ -297,6 +292,8 @@ def cleanup(torrents, imported_torrents):
                     break
             else:
                 ondisk_hashes.append(im_torrent)
+    else:
+        ondisk_hashes = imported_torrents
     # compare ondisk_hashes with torrents hashes
     cleaned_hashes = []
     for od_hash in ondisk_hashes:
