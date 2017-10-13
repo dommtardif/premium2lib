@@ -19,7 +19,6 @@ import configparser
 import threading
 import logging
 from pathlib import Path
-
 from datetime import timedelta, datetime
 
 __version__ = '0.17'
@@ -350,7 +349,7 @@ def main():
     config['MAIN'] = {}
 
     # if config not exists, make args required
-    args_req = True
+    # args_req = True
     if not os.path.exists(config_file):
         args_req = True
     # Config file exists, load its values first, override with args
