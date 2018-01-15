@@ -65,21 +65,21 @@ def load_hashdb():
 # Get torrent list from root_list
 
 
-def get_torrents(content, all_at_once):
+def get_torrents(content, all_at_once, base_dir):
     days_before_refresh = 7
     logger = logging.getLogger("get_torrents")
     torrents = []
     imported_torrents = []
     ondisk_hashes = load_hashdb()
     for item in content:
-            if item['type'] == 'torrent':
-                curTorrent = {'name': item['name'], 'hash': item['hash'],
+            if item['type'] == 'folder':
+                curTorrent = {'name': item['name'], 'hash': item['id'],
                               'date': datetime.today().strftime("%d%m%y"),
                               'skip': False}
                 torrents.append(curTorrent)
                 print("----------   Found torrent   ----------")
                 print("Torrent: " + item['name'])
-                print("Hash: " + item['hash'])
+                print("Hash: " + item['id'])
                 skip = False
                 if not ondisk_hashes == []:
                     # check for unique hash before import
@@ -102,29 +102,30 @@ def get_torrents(content, all_at_once):
                         import_torrent = input("Import torrent? (y/n)")
                     if import_torrent.upper() == 'Y':
                         logger.debug("Importing " + item['name'] +
-                                     " hash: " + item['hash'])
+                                     " hash: " + item['id'])
                         imported_torrents.append(curTorrent)
-                        browse_torrent(item['hash'], all_at_once)
+                        browse_torrent(item['id'], all_at_once, os.path.join(base_dir, item['name']))
                         break
                     elif import_torrent.upper() == 'N':
                         curTorrent['skip'] = True
                         imported_torrents.append(curTorrent)
                         logger.debug("Skipping " + item['name'] +
-                                     " hash: " + item['hash'])
+                                     " hash: " + item['id'])
                         break
     cleanup(torrents, imported_torrents)
 
 
 # Browse content of torrent for videos
-def browse_torrent(hash_id, all_at_once):
+def browse_torrent(hash_id, all_at_once,base_dir):
     number_of_retries = 5
     logger = logging.getLogger("browse_torrent")
     for i in range(1, number_of_retries + 1):
         try:
             results = (requests.
-                       post('https://www.premiumize.me/api/torrent/browse',
+                       post('https://www.premiumize.me/api/folder/list',
                             data={'customer_id': customer_id, 'pin': pin,
-                                  'hash': hash_id})).json()
+                                  'id': hash_id})).json()
+            logger.debug(results)
         except (requests.ConnectionError,
                 requests.HTTPError, requests.Timeout) as e:
             logger.warning("Error getting torrent " + hash_id)
@@ -142,50 +143,29 @@ def browse_torrent(hash_id, all_at_once):
         sys.exit(1)
 
     if 'content' in results:
-        get_subs(results['content'], all_at_once)
-        videos = get_videos(results['content'])
-        for video in videos:
-            # Generate strm files from video results
-            create_strm(video, all_at_once)
-
-# Generate array of videos from torrent
-
-
-def get_videos(content):
-    logger = logging.getLogger("get_videos")
-    videos = []
-    for item in content.values():
-        if item['type'] == 'dir':
-            videos += get_videos(item['children'])
-        else:
-            # if item is video, add to list
-            if 'ext' in item and item['ext'].upper() in VIDEO_EXTS:
-                logger.info("Found video: " + item['name'])
-                path = os.path.join(base_dir,
-                                    os.path.splitext(item['path'])[0]+'.strm')
-                video = {'path': path, 'name': item['name'],
-                         'url': item['url']}
-                videos.append(video)
-    return videos
-
-# Get subs from torrent
-
-
-def get_subs(content, all_at_once):
-    logger = logging.getLogger("get_subs")
-    for item in content.values():
-        if item['type'] == 'dir':
-            get_subs(item['children'], all_at_once)
-        else:
-            # if item is subtitle, download
-            if 'ext' in item and item['ext'].upper() in SUBS_EXTS:
-                logger.info("Found subtitle: " + item['name'])
-                path = os.path.join(base_dir, item['path'])
-                sub = {'path': path, 'name': item['name'], 'url': item['url']}
-                t = threading.Thread(target=download_sub,
-                                     args=(sub, all_at_once),
-                                     name="Download: " + item['name'])
-                t.start()
+        for item in results['content']:
+            if item['type'] == 'folder':
+                logger.debug("Found folder " + item['name'])
+                browse_torrent(item['id'], all_at_once, os.path.join(base_dir, item['name']))
+            elif item['type'] == 'file':
+                logger.debug("Found file " + os.path.join(base_dir,item['name']))
+                if os.path.splitext(item['name'])[1].upper()[1:] in VIDEO_EXTS:
+                    logger.info("Found video: " + item['name'])
+                    path = os.path.join(base_dir,
+                                        os.path.splitext(item['name'])[0]+'.strm')
+                    video = {'path': path, 'name': item['name'],
+                             'url': item['stream_link']}
+                    create_strm(video,all_at_once)
+                elif os.path.splitext(item['name'])[1].upper()[1:] in SUBS_EXTS:
+                    logger.info("Found subtitle: " + item['name'])
+                    path = os.path.join(base_dir, item['name'])
+                    sub = {'path': path, 'name': item['name'], 'url': item['link']}
+                    t = threading.Thread(target=download_sub,
+                                         args=(sub, all_at_once),
+                                         name="Download: " + item['name'])
+                    t.start()
+                else:
+                    logger.debug("File is unknown")
 
 # Generate strm file
 
@@ -342,7 +322,7 @@ def cleanup(torrents, imported_torrents):
 
 
 def main():
-    global base_dir, customer_id, pin
+    global customer_id, pin
 
     parser = argparse.ArgumentParser(description=prog_description)
     config = configparser.ConfigParser()
@@ -422,6 +402,7 @@ def main():
             root_list = (requests.post(
                          'https://www.premiumize.me/api/folder/list',
                          data={'customer_id': customer_id, 'pin': pin})).json()
+            logger.debug(root_list)
         except (requests.ConnectionError,
                 requests.HTTPError, requests.Timeout) as e:
             logger.warning("Error getting root folder from premiumize")
@@ -439,7 +420,7 @@ def main():
         sys.exit(1)
 
     try:
-        get_torrents(root_list['content'], args.all)
+        get_torrents(root_list['content'], args.all, base_dir)
     except KeyboardInterrupt:
         print("Exiting...")
         sys.exit(1)
